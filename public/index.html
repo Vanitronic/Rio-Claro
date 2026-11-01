@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Asistente virtual de atención a clientes de Distribuidora Río Claro."
+    />
+    <title>Asistente Río Claro</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main class="chat-shell">
+      <header class="chat-header">
+        <div class="brand-mark" aria-hidden="true">RC</div>
+        <div>
+          <p class="eyebrow">Distribuidora Río Claro</p>
+          <h1>Asistente de atención</h1>
+        </div>
+        <span class="status-indicator" aria-label="Asistente disponible"></span>
+      </header>
+
+      <section
+        id="messages"
+        class="messages"
+        aria-label="Conversación"
+        aria-live="polite"
+        aria-relevant="additions text"
+      >
+        <article class="message message-assistant">
+          <p>¡Hola! Soy el asistente virtual de Río Claro. Puedo ayudarte con preguntas generales sobre devoluciones y garantías. ¿Qué necesitas saber?</p>
+        </article>
+      </section>
+
+      <p id="typing-status" class="typing-status" role="status" aria-live="polite"></p>
+
+      <form id="chat-form" class="chat-form">
+        <label class="sr-only" for="message-input">Escribe tu mensaje</label>
+        <textarea
+          id="message-input"
+          name="message"
+          maxlength="2000"
+          placeholder="Escribe tu pregunta..."
+          rows="1"
+          required
+        ></textarea>
+        <button id="send-button" type="submit" aria-label="Enviar mensaje">
+          <span>Enviar</span>
+        </button>
+      </form>
+      <p class="disclaimer">
+        Asistente virtual con IA. No consulta pedidos ni existencias en tiempo real.
+      </p>
+    </main>
+  </body>
+</html>

@@ -162,3 +162,43 @@ El prototipo funcional desplegado y listo para evaluación externa se encuentra 
 👉 **[Acceder al Prototipo Funcional de Distribuidora Río Claro](https://rio-claro-ai.azurewebsites.net)** *(Sustituir por tu URL real)*
 
 *Nota: La aplicación permite la navegación como usuario final para probar la carga de facturas, la consulta por voz e interacción con el agente.*
+
+---
+
+## 7. Chatbot web con Microsoft Foundry
+
+La aplicación Node.js sirve `public/`, ofrece `GET /health` y atiende `POST /api/chat`. El navegador se comunica únicamente con este backend; la conversación conserva su contexto mientras la página permanezca abierta. Este prototipo atiende preguntas generales de clientes sobre devoluciones y garantías. No consulta inventario, pedidos ni fuentes documentales en vivo.
+
+### Configuración local
+
+Requisitos: Node.js 24 LTS, npm, acceso al proyecto de Microsoft Foundry y autenticación local con `DefaultAzureCredential` (por ejemplo, sesión iniciada con `az login` y permisos para el proyecto).
+
+Configura estas variables en `.env` local, que no debe subirse al repositorio:
+
+| Variable | Uso |
+| --- | --- |
+| `FOUNDRY_PROJECT_ENDPOINT` | Endpoint del proyecto de Foundry. |
+| `FOUNDRY_AGENT_NAME` | Nombre del agente (`rio-claro-support`). |
+| `FOUNDRY_MODEL_DEPLOYMENT` | Deployment de modelo usado al crear el agente. |
+| `PORT` | Puerto HTTP; App Service lo proporciona en Azure y localmente se usa `3000` por defecto. |
+
+Instala dependencias e inicia el servidor en PowerShell:
+
+```powershell
+npm install
+npm run dev
+```
+
+En otra terminal, comprueba la salud:
+
+```powershell
+Invoke-RestMethod http://localhost:3000/health
+```
+
+Debe responder con `status: ok`. Crea o actualiza una versión del agente con:
+
+```powershell
+npm run create-agent
+```
+
+El backend responde `422` cuando el mensaje está vacío o supera los 2000 caracteres y devuelve un error genérico `502` si Foundry no puede responder. Antes de desplegar, asigna a la identidad administrada de App Service los permisos necesarios sobre el proyecto Foundry y configura las variables de entorno en App Service; no uses claves API.
