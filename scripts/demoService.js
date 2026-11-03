@@ -26,7 +26,7 @@ export const demoOrderStatusLabels = {
   INCIDENCIA: "Incidencia; requiere seguimiento",
 };
 
-const allowedOrderTransitions = {
+export const allowedOrderTransitions = {
   PEDIDO_REGISTRADO: ["EN_PREPARACION", "INCIDENCIA"],
   EN_PREPARACION: ["ENVIADO", "INCIDENCIA"],
   ENVIADO: ["EN_REPARTO", "INCIDENCIA"],

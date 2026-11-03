@@ -6,6 +6,23 @@ import { fileURLToPath } from "node:url";
 import { registrarReporteDevolucion } from "./scripts/devolucionesTool.js";
 import { initializeDatabase } from "./scripts/database.js";
 import {
+  addSessionProductAlias,
+  analyzeSessionInvoice,
+  createSessionClaim,
+  createSessionProduct,
+  createSessionSimulatedPayment,
+  getOrCreateEmployeeSession,
+  getSessionClaims,
+  getSessionDashboard,
+  getSessionInvoices,
+  getSessionOrderStatus,
+  getSessionOrders,
+  getSessionProductCatalog,
+  setSessionInvoiceReviewStatus,
+  setSessionOrderStatus,
+  setSessionProductInventory,
+} from "./scripts/employeeSessionStore.js";
+import {
   addProductAlias,
   branches,
   createSimulatedPayment,
@@ -67,6 +84,7 @@ const localDemoEnabled =
   process.env.ENABLE_EMPLOYEE_DEMO === "true" &&
   process.env.NODE_ENV !== "production" &&
   !process.env.WEBSITE_SITE_NAME;
+const isAppService = Boolean(process.env.WEBSITE_SITE_NAME);
 const configuredUploadLimit = Number(process.env.MAX_UPLOAD_BYTES ?? 5 * 1024 * 1024);
 if (
   !Number.isSafeInteger(configuredUploadLimit) ||
@@ -84,13 +102,56 @@ const speechService = createSpeechService({
   credential,
 });
 
-function requireLocalDemo(_request, response, next) {
-  if (!localDemoEnabled) {
+function ensureAppServiceSession(request, response, next) {
+  if (!isAppService) {
+    return next();
+  }
+  response.set("Cache-Control", "no-store");
+
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    const origin = request.get("origin");
+    let matchesOrigin = false;
+    try {
+      matchesOrigin =
+        new URL(origin).origin === `https://${request.get("host")}`;
+    } catch {
+      matchesOrigin = false;
+    }
+    if (!matchesOrigin) {
+      return response.status(403).json({
+        error: "La solicitud no está permitida.",
+      });
+    }
+  }
+
+  try {
+    const session = getOrCreateEmployeeSession(
+      "anonymous",
+      request.get("x-employee-session"),
+    );
+    request.employeeSession = session.state;
+    response.set("X-Employee-Session", session.id);
+    return next();
+  } catch (error) {
+    if (error?.code === "SESSION_CAPACITY") {
+      return response.status(503).json({
+        error: "No hay capacidad para iniciar una sesión temporal.",
+      });
+    }
+    return next(error);
+  }
+}
+
+function requireEmployeeAccess(request, response, next) {
+  if (localDemoEnabled) {
+    return next();
+  }
+  if (!isAppService) {
     return response.status(404).json({
       error: "El módulo de demostración local no está habilitado.",
     });
   }
-  return next();
+  return ensureAppServiceSession(request, response, next);
 }
 
 function isLoopbackRequest(request) {
@@ -107,7 +168,7 @@ function validString(value, minLength, maxLength) {
   );
 }
 
-async function executeAssistantTool(name, args) {
+async function executeAssistantTool(name, args, employeeSession) {
   if (
     name !== "consultarEstadoPedido" ||
     typeof args.orderId !== "string" ||
@@ -115,7 +176,9 @@ async function executeAssistantTool(name, args) {
   ) {
     return { found: false, message: "No se encontró ese pedido ficticio." };
   }
-  const order = await getDemoOrderStatus(args.orderId);
+  const order = employeeSession
+    ? await getSessionOrderStatus(employeeSession, args.orderId)
+    : await getDemoOrderStatus(args.orderId);
   return order
     ? {
         found: true,
@@ -192,7 +255,7 @@ app.post("/api/speech/token", async (request, response) => {
   }
 });
 
-app.post("/api/chat", async (request, response) => {
+app.post("/api/chat", ensureAppServiceSession, async (request, response) => {
   const body =
     request.body &&
     typeof request.body === "object" &&
@@ -229,7 +292,8 @@ app.post("/api/chat", async (request, response) => {
       conversationId,
       message,
       agentRef,
-      executeTool: executeAssistantTool,
+      executeTool: (name, args) =>
+        executeAssistantTool(name, args, request.employeeSession),
     });
 
     if (!result.output_text) {
@@ -251,7 +315,7 @@ app.post("/api/chat", async (request, response) => {
   }
 });
 
-app.use("/api/claims", requireLocalDemo);
+app.use("/api/claims", requireEmployeeAccess);
 app.post("/api/claims", async (request, response) => {
   const { branch, product, reason } = request.body ?? {};
   if (
@@ -265,11 +329,17 @@ app.post("/api/claims", async (request, response) => {
   }
 
   try {
-    const claim = await registrarReporteDevolucion(
-      branch,
-      product.trim(),
-      reason.trim(),
-    );
+    const claim = localDemoEnabled
+      ? await registrarReporteDevolucion(
+          branch,
+          product.trim(),
+          reason.trim(),
+        )
+      : createSessionClaim(request.employeeSession, {
+          branch,
+          product,
+          reason,
+        });
     return response.status(201).json(claim);
   } catch (error) {
     console.error(
@@ -282,16 +352,24 @@ app.post("/api/claims", async (request, response) => {
   }
 });
 
+app.use("/api/employee", requireEmployeeAccess);
 app.get("/api/employee/demo-status", (_request, response) => {
-  response.json({ enabled: localDemoEnabled });
+  response.json({ enabled: localDemoEnabled || isAppService });
 });
-app.use("/api/employee", requireLocalDemo);
 app.get("/api/employee/config", (_request, response) => {
-  response.json({ maxUploadBytes });
+  response.json({
+    maxUploadBytes,
+    temporary: !localDemoEnabled,
+    sessionLifetimeMinutes: 30,
+  });
 });
-app.get("/api/employee/dashboard", async (_request, response) => {
+app.get("/api/employee/dashboard", async (request, response) => {
   try {
-    return response.json(await getDashboard());
+    return response.json(
+      localDemoEnabled
+        ? await getDashboard()
+        : await getSessionDashboard(request.employeeSession),
+    );
   } catch (error) {
     console.error(
       "Employee dashboard failed:",
@@ -303,9 +381,13 @@ app.get("/api/employee/dashboard", async (_request, response) => {
   }
 });
 
-app.get("/api/employee/products", async (_request, response) => {
+app.get("/api/employee/products", async (request, response) => {
   try {
-    return response.json(await getProductCatalog());
+    return response.json(
+      localDemoEnabled
+        ? await getProductCatalog()
+        : await getSessionProductCatalog(request.employeeSession),
+    );
   } catch (error) {
     console.error(
       "Product catalog failed:",
@@ -317,9 +399,13 @@ app.get("/api/employee/products", async (_request, response) => {
   }
 });
 
-app.get("/api/employee/orders", async (_request, response) => {
+app.get("/api/employee/orders", async (request, response) => {
   try {
-    return response.json(await getDemoOrders());
+    return response.json(
+      localDemoEnabled
+        ? await getDemoOrders()
+        : await getSessionOrders(request.employeeSession),
+    );
   } catch (error) {
     console.error(
       "Demo orders list failed:",
@@ -340,7 +426,13 @@ app.patch("/api/employee/orders/:id/status", async (request, response) => {
   }
 
   try {
-    const result = await setDemoOrderStatus(request.params.id, status);
+    const result = localDemoEnabled
+      ? await setDemoOrderStatus(request.params.id, status)
+      : await setSessionOrderStatus(
+          request.employeeSession,
+          request.params.id,
+          status,
+        );
     if (result.result === "invalid") {
       return response.status(422).json({
         error: "El identificador del pedido no es válido.",
@@ -392,15 +484,24 @@ app.post("/api/employee/products", async (request, response) => {
 
   try {
     return response.status(201).json(
-      await createProduct({
-        name: name.trim(),
-        category: category ?? null,
-        price: price ?? null,
-      }),
+      localDemoEnabled
+        ? await createProduct({
+            name: name.trim(),
+            category: category ?? null,
+            price: price ?? null,
+          })
+        : await createSessionProduct(request.employeeSession, {
+            name: name.trim(),
+            category: category ?? null,
+            price: price ?? null,
+          }),
     );
   } catch (error) {
     if (error?.code === "PRODUCT_CONFLICT") {
       return response.status(409).json({ error: error.message });
+    }
+    if (error?.code === "INVALID_PRODUCT") {
+      return response.status(422).json({ error: error.message });
     }
     console.error(
       "Product creation failed:",
@@ -429,7 +530,14 @@ app.post("/api/employee/products/:id/inventory", async (request, response) => {
   }
 
   try {
-    const result = await setProductInventory(productId, branch, stock);
+    const result = localDemoEnabled
+      ? await setProductInventory(productId, branch, stock)
+      : await setSessionProductInventory(
+          request.employeeSession,
+          productId,
+          branch,
+          stock,
+        );
     if (result.result === "not_found") {
       return response.status(404).json({ error: "No se encontró el producto." });
     }
@@ -459,11 +567,23 @@ app.post("/api/employee/aliases", async (request, response) => {
   }
 
   try {
-    await addProductAlias(productId, alias, branch ?? null);
+    if (localDemoEnabled) {
+      await addProductAlias(productId, alias, branch ?? null);
+    } else {
+      await addSessionProductAlias(
+        request.employeeSession,
+        productId,
+        alias,
+        branch ?? null,
+      );
+    }
     return response.status(201).json({ status: "created" });
   } catch (error) {
     if (error?.code === "ALIAS_CONFLICT") {
       return response.status(409).json({ error: error.message });
+    }
+    if (error?.code === "INVALID_ALIAS") {
+      return response.status(422).json({ error: error.message });
     }
     console.error(
       "Product alias creation failed:",
@@ -475,9 +595,13 @@ app.post("/api/employee/aliases", async (request, response) => {
   }
 });
 
-app.get("/api/employee/claims", async (_request, response) => {
+app.get("/api/employee/claims", async (request, response) => {
   try {
-    return response.json(await getClaims());
+    return response.json(
+      localDemoEnabled
+        ? await getClaims()
+        : getSessionClaims(request.employeeSession),
+    );
   } catch (error) {
     console.error(
       "Claims list failed:",
@@ -489,9 +613,13 @@ app.get("/api/employee/claims", async (_request, response) => {
   }
 });
 
-app.get("/api/employee/invoices", async (_request, response) => {
+app.get("/api/employee/invoices", async (request, response) => {
   try {
-    return response.json(await getInvoices());
+    return response.json(
+      localDemoEnabled
+        ? await getInvoices()
+        : getSessionInvoices(request.employeeSession),
+    );
   } catch (error) {
     console.error(
       "Invoices list failed:",
@@ -542,7 +670,9 @@ app.post(
     }
 
     try {
-      const result = await procesarFacturaInteligente(bytes);
+      const result = localDemoEnabled
+        ? await procesarFacturaInteligente(bytes)
+        : await analyzeSessionInvoice(request.employeeSession, bytes);
       if (result.duplicate) {
         return response.status(409).json({
           error: "La factura ya existe; no se creó otro registro.",
@@ -586,7 +716,13 @@ app.patch("/api/employee/invoices/:id/review", async (request, response) => {
   }
 
   try {
-    const result = await setInvoiceReviewStatus(invoiceId, status);
+    const result = localDemoEnabled
+      ? await setInvoiceReviewStatus(invoiceId, status)
+      : setSessionInvoiceReviewStatus(
+          request.employeeSession,
+          invoiceId,
+          status,
+        );
     if (result.result === "not_found") {
       return response.status(404).json({ error: "No se encontró la factura." });
     }
@@ -621,7 +757,13 @@ app.post("/api/employee/invoices/:id/payments", async (request, response) => {
   }
 
   try {
-    const result = await createSimulatedPayment(invoiceId, reference);
+    const result = localDemoEnabled
+      ? await createSimulatedPayment(invoiceId, reference)
+      : createSessionSimulatedPayment(
+          request.employeeSession,
+          invoiceId,
+          reference,
+        );
     if (result.result === "not_found") {
       return response.status(404).json({ error: "No se encontró la factura." });
     }

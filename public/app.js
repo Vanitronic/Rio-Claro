@@ -19,8 +19,24 @@ const voiceStatus = document.querySelector("#voice-status");
 
 let conversationId = null;
 let speechReady = false;
+const employeeSessionStorageKey = "rio-claro-employee-session";
 let lastAssistantReply =
   document.querySelector("#messages .message-assistant p")?.textContent || "";
+
+function addEmployeeSessionHeader(headers) {
+  const sessionId = sessionStorage.getItem(employeeSessionStorageKey);
+  if (sessionId) {
+    headers["X-Employee-Session"] = sessionId;
+  }
+  return headers;
+}
+
+function saveEmployeeSession(response) {
+  const sessionId = response.headers.get("X-Employee-Session");
+  if (sessionId) {
+    sessionStorage.setItem(employeeSessionStorageKey, sessionId);
+  }
+}
 
 const speechCallbacks = {
   onTranscript: (transcript) => {
@@ -141,12 +157,15 @@ chatForm.addEventListener("submit", async (event) => {
   try {
     const result = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: addEmployeeSessionHeader({
+        "Content-Type": "application/json",
+      }),
       body: JSON.stringify({
         message,
         conversation_id: conversationId,
       }),
     });
+    saveEmployeeSession(result);
     const data = await result.json();
 
     if (!result.ok) {
@@ -228,9 +247,12 @@ claimForm.addEventListener("submit", async (event) => {
   try {
     const response = await fetch("/api/claims", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: addEmployeeSessionHeader({
+        "Content-Type": "application/json",
+      }),
       body: JSON.stringify(Object.fromEntries(formData)),
     });
+    saveEmployeeSession(response);
     const result = await response.json();
 
     if (!response.ok) {

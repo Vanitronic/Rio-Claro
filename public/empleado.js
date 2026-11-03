@@ -16,6 +16,7 @@ const productSearch = document.querySelector("#product-search");
 let products = [];
 let maxUploadBytes = 5 * 1024 * 1024;
 let apiAvailable = true;
+const employeeSessionStorageKey = "rio-claro-employee-session";
 
 const orderTransitions = {
   PEDIDO_REGISTRADO: ["EN_PREPARACION", "INCIDENCIA"],
@@ -47,7 +48,17 @@ function createElement(tagName, text, className) {
 }
 
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
+  const headers = new Headers(options.headers || {});
+  const sessionId = sessionStorage.getItem(employeeSessionStorageKey);
+  if (sessionId) {
+    headers.set("X-Employee-Session", sessionId);
+  }
+
+  const response = await fetch(url, { ...options, headers });
+  const nextSessionId = response.headers.get("X-Employee-Session");
+  if (nextSessionId) {
+    sessionStorage.setItem(employeeSessionStorageKey, nextSessionId);
+  }
   const result = await response.json();
   if (!response.ok) {
     throw new Error(result.error || "No fue posible completar la solicitud.");
@@ -323,6 +334,11 @@ async function refreshData() {
     requestJson("/api/employee/invoices"),
   ]);
   maxUploadBytes = config.maxUploadBytes;
+  if (config.temporary && !warning.dataset.sessionNotice) {
+    warning.textContent =
+      `Los cambios son privados de esta pestaña; no se guardan en SQLite y vencen tras ${config.sessionLifetimeMinutes} minutos de inactividad o al reiniciar App Service.`;
+    warning.dataset.sessionNotice = "true";
+  }
   document.querySelector("#invoice-description").textContent =
     `PDF o JPEG/JPG, máximo ${Math.ceil(maxUploadBytes / (1024 * 1024))} MiB. ` +
     "La extracción requiere Azure AI Document Intelligence.";
