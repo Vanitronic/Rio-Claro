@@ -76,6 +76,21 @@ export async function initializeDatabase() {
     categoria TEXT,
     precio_base REAL
   )`);
+  await addColumnIfMissing("productos_maestros", "nombre_normalizado", "TEXT");
+
+  const existingProducts = await all(
+    "SELECT id_producto, nombre_estandar FROM productos_maestros",
+  );
+  for (const product of existingProducts) {
+    await run(
+      `UPDATE productos_maestros SET nombre_normalizado = ?
+       WHERE id_producto = ? AND nombre_normalizado IS NULL`,
+      [normalizeText(product.nombre_estandar) || null, product.id_producto],
+    );
+  }
+  await run(`CREATE UNIQUE INDEX IF NOT EXISTS ux_productos_nombre_normalizado
+    ON productos_maestros(nombre_normalizado)
+    WHERE nombre_normalizado IS NOT NULL`);
 
   await run(`CREATE TABLE IF NOT EXISTS inventario_sucursales (
     id_inventario INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,6 +99,8 @@ export async function initializeDatabase() {
     stock_actual INTEGER,
     FOREIGN KEY (id_producto) REFERENCES productos_maestros(id_producto)
   )`);
+  await run(`CREATE UNIQUE INDEX IF NOT EXISTS ux_inventario_producto_sucursal
+    ON inventario_sucursales(id_producto, sucursal)`);
 
   await run(`CREATE TABLE IF NOT EXISTS facturas_procesadas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,6 +148,12 @@ export async function initializeDatabase() {
     FOREIGN KEY (id_factura) REFERENCES facturas_procesadas(id)
   )`);
 
+  await run(`CREATE TABLE IF NOT EXISTS pedidos_demo (
+    id_pedido TEXT PRIMARY KEY,
+    estado TEXT NOT NULL,
+    actualizado_en TEXT NOT NULL
+  )`);
+
   await run(`CREATE UNIQUE INDEX IF NOT EXISTS ux_factura_proveedor_folio
     ON facturas_procesadas(proveedor_normalizado, folio_normalizado)
     WHERE proveedor_normalizado IS NOT NULL AND folio_normalizado IS NOT NULL`);
@@ -138,9 +161,9 @@ export async function initializeDatabase() {
     ON facturas_procesadas(hash_archivo) WHERE hash_archivo IS NOT NULL`);
 
   await run(`INSERT OR IGNORE INTO productos_maestros
-    (id_producto, nombre_estandar, categoria, precio_base)
-    VALUES (1, 'Cloro 1 Litro', 'Limpieza e Higiene', 18.50),
-           (2, 'Pinol Limpiador 800ml', 'Limpieza e Higiene', 25.00)`);
+    (id_producto, nombre_estandar, categoria, precio_base, nombre_normalizado)
+    VALUES (1, 'Cloro 1 Litro', 'Limpieza e Higiene', 18.50, 'cloro 1 litro'),
+           (2, 'Pinol Limpiador 800ml', 'Limpieza e Higiene', 25.00, 'pinol limpiador 800ml')`);
 
   const stockExamples = [
     [1, "León", 45],
@@ -176,6 +199,22 @@ export async function initializeDatabase() {
         (id_producto, alias, alias_normalizado, sucursal)
        VALUES (?, ?, ?, ?)`,
       [productId, alias, normalizeText(alias), branch],
+    );
+  }
+
+  const demoOrders = [
+    ["PED-DEMO-001", "PEDIDO_REGISTRADO"],
+    ["PED-DEMO-002", "EN_PREPARACION"],
+    ["PED-DEMO-003", "ENVIADO"],
+    ["PED-DEMO-004", "EN_REPARTO"],
+    ["PED-DEMO-005", "ENTREGA_CONFIRMADA"],
+    ["PED-DEMO-006", "INCIDENCIA"],
+  ];
+  for (const [orderId, status] of demoOrders) {
+    await run(
+      `INSERT OR IGNORE INTO pedidos_demo (id_pedido, estado, actualizado_en)
+       VALUES (?, ?, '2026-01-01T00:00:00.000Z')`,
+      [orderId, status],
     );
   }
 }

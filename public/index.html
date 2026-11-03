@@ -9,7 +9,7 @@
     />
     <title>Asistente Río Claro</title>
     <link rel="stylesheet" href="/styles.css" />
-    <script src="/app.js" defer></script>
+    <script type="module" src="/app.js"></script>
   </head>
   <body>
     <main class="chat-shell">
@@ -36,6 +36,35 @@
       </section>
 
       <p id="typing-status" class="typing-status" role="status" aria-live="polite"></p>
+
+      <section class="voice-panel" aria-label="Prueba opcional de voz">
+        <label class="voice-opt-in" for="voice-opt-in">
+          <input id="voice-opt-in" type="checkbox" disabled />
+          Habilitar funciones de voz en este dispositivo
+        </label>
+        <div class="voice-actions">
+          <button
+            id="voice-input-button"
+            type="button"
+            aria-pressed="false"
+            disabled
+          >
+            Dictar pregunta
+          </button>
+          <button id="voice-read-button" type="button" disabled>
+            Leer última respuesta
+          </button>
+          <button id="voice-cancel-button" type="button" disabled>
+            Cancelar voz
+          </button>
+        </div>
+        <p id="voice-status" class="form-status" role="status" aria-live="polite">
+          La voz es opcional; puedes usar el chat de texto en todo momento.
+        </p>
+        <p class="voice-note">
+          Al dictar con Azure Speech, el audio se envía al servicio de Azure y esta aplicación no lo almacena. Si no está habilitado, se usarán las funciones de voz del navegador. El micrófono solo se activa al dictar.
+        </p>
+      </section>
 
       <details class="claim-panel">
         <summary>Registrar un reclamo de demostración</summary>

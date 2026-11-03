@@ -9,13 +9,22 @@ import {
   addProductAlias,
   branches,
   createSimulatedPayment,
+  createProduct,
+  demoOrderStatusLabels,
+  demoOrderStatuses,
+  getDemoOrderStatus,
+  getDemoOrders,
   getClaims,
   getDashboard,
   getInvoices,
   getProductCatalog,
+  setProductInventory,
+  setDemoOrderStatus,
   setInvoiceReviewStatus,
 } from "./scripts/demoService.js";
 import { procesarFacturaInteligente } from "./scripts/agenteCapturador.js";
+import { createAssistantResponse } from "./scripts/functionCalling.js";
+import { createSpeechService } from "./scripts/speechService.js";
 
 const projectEndpoint = process.env.FOUNDRY_PROJECT_ENDPOINT?.trim();
 const agentName = process.env.FOUNDRY_AGENT_NAME?.trim();
@@ -26,10 +35,8 @@ if (!projectEndpoint || !agentName) {
   );
 }
 
-const projectClient = new AIProjectClient(
-  projectEndpoint,
-  new DefaultAzureCredential(),
-);
+const credential = new DefaultAzureCredential();
+const projectClient = new AIProjectClient(projectEndpoint, credential);
 const openai = projectClient.getOpenAIClient();
 const agentRef = {
   body: {
@@ -42,6 +49,20 @@ const agentRef = {
 
 const app = express();
 const publicDirectory = join(import.meta.dirname, "public");
+const speechSdkBundle = join(
+  import.meta.dirname,
+  "node_modules",
+  "microsoft-cognitiveservices-speech-sdk",
+  "distrib",
+  "browser",
+  "microsoft.cognitiveservices.speech.sdk.bundle-min.js",
+);
+const speechSdkLicense = join(
+  import.meta.dirname,
+  "node_modules",
+  "microsoft-cognitiveservices-speech-sdk",
+  "LICENSE",
+);
 const localDemoEnabled =
   process.env.ENABLE_EMPLOYEE_DEMO === "true" &&
   process.env.NODE_ENV !== "production" &&
@@ -55,6 +76,13 @@ if (
   throw new Error("MAX_UPLOAD_BYTES must be between 1024 and 10485760.");
 }
 const maxUploadBytes = configuredUploadLimit;
+const speechService = createSpeechService({
+  endpoint: process.env.AZURE_SPEECH_ENDPOINT,
+  enabled: process.env.AZURE_SPEECH_ENABLED === "true",
+  allowAccess:
+    process.env.NODE_ENV !== "production" && !process.env.WEBSITE_SITE_NAME,
+  credential,
+});
 
 function requireLocalDemo(_request, response, next) {
   if (!localDemoEnabled) {
@@ -65,6 +93,12 @@ function requireLocalDemo(_request, response, next) {
   return next();
 }
 
+function isLoopbackRequest(request) {
+  return ["localhost", "127.0.0.1", "::1"].includes(
+    request.hostname.toLowerCase(),
+  );
+}
+
 function validString(value, minLength, maxLength) {
   return (
     typeof value === "string" &&
@@ -73,12 +107,89 @@ function validString(value, minLength, maxLength) {
   );
 }
 
+async function executeAssistantTool(name, args) {
+  if (
+    name !== "consultarEstadoPedido" ||
+    typeof args.orderId !== "string" ||
+    !/^PED-DEMO-\d{3}$/.test(args.orderId)
+  ) {
+    return { found: false, message: "No se encontró ese pedido ficticio." };
+  }
+  const order = await getDemoOrderStatus(args.orderId);
+  return order
+    ? {
+        found: true,
+        orderId: order.orderId,
+        status: order.status,
+        statusLabel: demoOrderStatusLabels[order.status],
+        updatedAt: order.updatedAt,
+      }
+    : { found: false, message: "No se encontró ese pedido ficticio." };
+}
+
 app.use(express.json({ limit: "16kb" }));
 
 app.use(express.static(publicDirectory));
 
+app.get("/vendor/speech-sdk.js", (_request, response, next) => {
+  response.sendFile(speechSdkBundle, (error) => {
+    if (error) {
+      next(error);
+    }
+  });
+});
+
+app.get("/vendor/speech-sdk-license.txt", (_request, response, next) => {
+  response.sendFile(speechSdkLicense, (error) => {
+    if (error) {
+      next(error);
+    }
+  });
+});
+
 app.get("/health", (_request, response) => {
   response.json({ status: "ok" });
+});
+
+app.get("/api/speech/config", (_request, response) => {
+  response.set("Cache-Control", "no-store");
+  return response.json(
+    isLoopbackRequest(_request)
+      ? speechService.getConfig()
+      : { enabled: false },
+  );
+});
+
+app.post("/api/speech/token", async (request, response) => {
+  response.set("Cache-Control", "no-store");
+  if (!isLoopbackRequest(request) || !speechService.getConfig().enabled) {
+    return response.status(404).json({
+      error: "Azure Speech no está habilitado para esta instancia.",
+    });
+  }
+
+  const origin = request.get("origin");
+  if (origin && origin !== `${request.protocol}://${request.get("host")}`) {
+    return response.status(403).json({
+      error: "La solicitud de voz no está permitida.",
+    });
+  }
+
+  try {
+    const accessToken = await speechService.getAccessToken();
+    return response.json({
+      token: accessToken.token,
+      expiresOnTimestamp: accessToken.expiresOnTimestamp,
+    });
+  } catch (error) {
+    console.error(
+      "Speech token request failed:",
+      error instanceof Error ? error.name : "Unknown error",
+    );
+    return response.status(503).json({
+      error: "No fue posible iniciar Azure Speech.",
+    });
+  }
 });
 
 app.post("/api/chat", async (request, response) => {
@@ -113,13 +224,13 @@ app.post("/api/chat", async (request, response) => {
         ? body.conversation_id.trim()
         : (await openai.conversations.create()).id;
 
-    const result = await openai.responses.create(
-      {
-        conversation: conversationId,
-        input: message,
-      },
+    const result = await createAssistantResponse({
+      openai,
+      conversationId,
+      message,
       agentRef,
-    );
+      executeTool: executeAssistantTool,
+    });
 
     if (!result.output_text) {
       throw new Error("Foundry returned an empty response.");
@@ -202,6 +313,134 @@ app.get("/api/employee/products", async (_request, response) => {
     );
     return response.status(500).json({
       error: "No fue posible cargar el catálogo.",
+    });
+  }
+});
+
+app.get("/api/employee/orders", async (_request, response) => {
+  try {
+    return response.json(await getDemoOrders());
+  } catch (error) {
+    console.error(
+      "Demo orders list failed:",
+      error instanceof Error ? error.name : "Unknown error",
+    );
+    return response.status(500).json({
+      error: "No fue posible cargar los pedidos de demostración.",
+    });
+  }
+});
+
+app.patch("/api/employee/orders/:id/status", async (request, response) => {
+  const { status } = request.body ?? {};
+  if (!demoOrderStatuses.includes(status)) {
+    return response.status(422).json({
+      error: "El estado del pedido no es válido.",
+    });
+  }
+
+  try {
+    const result = await setDemoOrderStatus(request.params.id, status);
+    if (result.result === "invalid") {
+      return response.status(422).json({
+        error: "El identificador del pedido no es válido.",
+      });
+    }
+    if (result.result === "not_found") {
+      return response.status(404).json({
+        error: "No se encontró el pedido de demostración.",
+      });
+    }
+    if (result.result === "invalid_transition") {
+      return response.status(409).json({
+        error: `No se permite cambiar de ${result.status} a ${status}.`,
+      });
+    }
+    return response.json({
+      status: result.status,
+      updatedAt: result.updatedAt,
+    });
+  } catch (error) {
+    console.error(
+      "Demo order status update failed:",
+      error instanceof Error ? error.name : "Unknown error",
+    );
+    return response.status(500).json({
+      error: "No fue posible actualizar el pedido de demostración.",
+    });
+  }
+});
+
+app.post("/api/employee/products", async (request, response) => {
+  const { name, category, price } = request.body ?? {};
+  if (
+    !validString(name, 2, 120) ||
+    (category !== undefined &&
+      category !== null &&
+      (typeof category !== "string" || category.trim().length > 100)) ||
+    (price !== undefined &&
+      price !== null &&
+      (typeof price !== "number" ||
+        !Number.isFinite(price) ||
+        price < 0 ||
+        price > 100000000))
+  ) {
+    return response.status(422).json({
+      error: "El nombre, categoría o precio del producto no son válidos.",
+    });
+  }
+
+  try {
+    return response.status(201).json(
+      await createProduct({
+        name: name.trim(),
+        category: category ?? null,
+        price: price ?? null,
+      }),
+    );
+  } catch (error) {
+    if (error?.code === "PRODUCT_CONFLICT") {
+      return response.status(409).json({ error: error.message });
+    }
+    console.error(
+      "Product creation failed:",
+      error instanceof Error ? error.name : "Unknown error",
+    );
+    return response.status(500).json({
+      error: "No fue posible crear el producto.",
+    });
+  }
+});
+
+app.post("/api/employee/products/:id/inventory", async (request, response) => {
+  const productId = Number(request.params.id);
+  const { branch, stock } = request.body ?? {};
+  if (
+    !Number.isSafeInteger(productId) ||
+    productId < 1 ||
+    !branches.includes(branch) ||
+    !Number.isSafeInteger(stock) ||
+    stock < 0 ||
+    stock > 100000000
+  ) {
+    return response.status(422).json({
+      error: "El producto, sucursal o existencia no son válidos.",
+    });
+  }
+
+  try {
+    const result = await setProductInventory(productId, branch, stock);
+    if (result.result === "not_found") {
+      return response.status(404).json({ error: "No se encontró el producto." });
+    }
+    return response.json({ status: "updated" });
+  } catch (error) {
+    console.error(
+      "Product inventory update failed:",
+      error instanceof Error ? error.name : "Unknown error",
+    );
+    return response.status(500).json({
+      error: "No fue posible actualizar las existencias.",
     });
   }
 });

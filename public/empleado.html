@@ -27,7 +27,21 @@
           Demostración local con datos de ejemplo. No hay autenticación, permisos reales ni pagos.
         </p>
 
-        <section class="dashboard-grid" aria-label="Resumen">
+        <section class="employee-intro" aria-labelledby="employee-intro-title">
+          <div>
+            <p class="eyebrow">Espacio de trabajo</p>
+            <h2 id="employee-intro-title">Todo en orden, desde un solo lugar</h2>
+            <p>Consulta pedidos, administra el catálogo y revisa lo que necesita seguimiento.</p>
+          </div>
+          <nav class="employee-nav" aria-label="Ir a una sección">
+            <a href="#orders">Pedidos</a>
+            <a href="#catalog">Catálogo e inventario</a>
+            <a href="#invoices">Facturas</a>
+            <a href="#claims">Reclamos</a>
+          </nav>
+        </section>
+
+        <section class="dashboard-grid" aria-label="Resumen de operaciones">
           <article class="metric-card">
             <span>Productos</span>
             <strong id="metric-products">—</strong>
@@ -47,35 +61,120 @@
         </section>
 
         <div class="employee-grid">
-          <section class="employee-section">
-            <h2>Catálogo e inventario</h2>
-            <label for="product-search">Buscar por nombre o alias</label>
-            <input id="product-search" type="search" autocomplete="off" />
-            <div id="product-list" class="record-list"></div>
-            <form id="alias-form">
-              <h3>Agregar alias</h3>
-              <label for="alias-product">Producto estándar</label>
-              <select id="alias-product" name="productId" required></select>
-              <label for="alias-value">Nombre alternativo</label>
-              <input id="alias-value" name="alias" maxlength="120" required />
-              <label for="alias-branch">Sucursal (opcional)</label>
-              <select id="alias-branch" name="branch">
-                <option value="">Todas</option>
-                <option>Guadalajara</option>
-                <option>Zapopan</option>
-                <option>León</option>
-                <option>Querétaro</option>
-                <option>Aguascalientes</option>
-              </select>
-              <button type="submit">Guardar alias</button>
-              <p id="alias-status" class="form-status" role="status"></p>
-            </form>
+          <section id="orders" class="employee-section employee-section-wide">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Logística</p>
+                <h2>Seguimiento de pedidos</h2>
+              </div>
+              <p>Pedidos ficticios para esta demostración; no contienen datos de clientes.</p>
+            </div>
+            <div
+              id="order-list"
+              class="record-list"
+              aria-live="polite"
+              aria-relevant="additions text"
+            ></div>
           </section>
 
-          <section class="employee-section">
-            <h2>Captura de facturas</h2>
-            <p id="invoice-description">PDF o JPEG/JPG. La extracción requiere Azure AI Document Intelligence.</p>
-            <form id="invoice-form">
+          <section id="catalog" class="employee-section employee-section-wide">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Productos</p>
+                <h2>Catálogo e inventario</h2>
+              </div>
+              <p>Busca nombres estándar y alias; revisa las existencias por sucursal.</p>
+            </div>
+            <div class="catalog-search">
+              <label for="product-search">Buscar producto o alias</label>
+              <input
+                id="product-search"
+                type="search"
+                placeholder="Ej. cloro, blanqueador…"
+                autocomplete="off"
+              />
+            </div>
+            <div id="product-list" class="record-list"></div>
+            <div class="catalog-tools">
+              <form id="inventory-form" class="employee-form employee-form-primary">
+                <h3>Actualizar existencias</h3>
+                <p class="form-hint">Registra la cantidad disponible en una sucursal.</p>
+                <label for="inventory-product">Producto</label>
+                <select id="inventory-product" name="productId" required></select>
+                <label for="inventory-branch">Sucursal</label>
+                <select id="inventory-branch" name="branch" required>
+                  <option value="">Selecciona una sucursal</option>
+                  <option>Guadalajara</option>
+                  <option>Zapopan</option>
+                  <option>León</option>
+                  <option>Querétaro</option>
+                  <option>Aguascalientes</option>
+                </select>
+                <label for="inventory-stock">Existencias</label>
+                <input
+                  id="inventory-stock"
+                  name="stock"
+                  type="number"
+                  min="0"
+                  max="100000000"
+                  step="1"
+                  required
+                />
+                <button type="submit">Guardar existencias</button>
+                <p id="inventory-status" class="form-status" role="status" aria-live="polite"></p>
+              </form>
+              <details class="employee-form-details">
+                <summary>Crear un producto</summary>
+                <form id="product-form" class="employee-form">
+                  <label for="product-name">Nombre estándar</label>
+                  <input id="product-name" name="name" maxlength="120" required />
+                  <label for="product-category">Categoría (opcional)</label>
+                  <input id="product-category" name="category" maxlength="100" />
+                  <label for="product-price">Precio base en MXN (opcional)</label>
+                  <input
+                    id="product-price"
+                    name="price"
+                    type="number"
+                    min="0"
+                    max="100000000"
+                    step="0.01"
+                  />
+                  <button type="submit">Crear producto</button>
+                  <p id="product-status" class="form-status" role="status" aria-live="polite"></p>
+                </form>
+              </details>
+              <details class="employee-form-details">
+                <summary>Agregar un alias</summary>
+                <form id="alias-form" class="employee-form">
+                  <label for="alias-product">Producto estándar</label>
+                  <select id="alias-product" name="productId" required></select>
+                  <label for="alias-value">Nombre alternativo</label>
+                  <input id="alias-value" name="alias" maxlength="120" required />
+                  <label for="alias-branch">Sucursal (opcional)</label>
+                  <select id="alias-branch" name="branch">
+                    <option value="">Todas</option>
+                    <option>Guadalajara</option>
+                    <option>Zapopan</option>
+                    <option>León</option>
+                    <option>Querétaro</option>
+                    <option>Aguascalientes</option>
+                  </select>
+                  <button type="submit">Guardar alias</button>
+                  <p id="alias-status" class="form-status" role="status"></p>
+                </form>
+              </details>
+            </div>
+          </section>
+
+          <section id="invoices" class="employee-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Administración</p>
+                <h2>Facturas</h2>
+              </div>
+            </div>
+            <p id="invoice-description" class="section-description">PDF o JPEG/JPG. La extracción requiere Azure AI Document Intelligence.</p>
+            <form id="invoice-form" class="employee-form">
               <label for="invoice-file">Seleccionar factura</label>
               <input
                 id="invoice-file"
@@ -90,8 +189,13 @@
             <div id="invoice-list" class="record-list"></div>
           </section>
 
-          <section class="employee-section">
-            <h2>Reclamos recibidos</h2>
+          <section id="claims" class="employee-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">Atención al cliente</p>
+                <h2>Reclamos recibidos</h2>
+              </div>
+            </div>
             <div id="claim-list" class="record-list"></div>
           </section>
         </div>

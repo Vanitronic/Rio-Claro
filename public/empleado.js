@@ -1,9 +1,14 @@
 const warning = document.querySelector("#demo-warning");
+const orderList = document.querySelector("#order-list");
 const productList = document.querySelector("#product-list");
 const invoiceList = document.querySelector("#invoice-list");
 const claimList = document.querySelector("#claim-list");
+const productForm = document.querySelector("#product-form");
+const inventoryForm = document.querySelector("#inventory-form");
 const aliasForm = document.querySelector("#alias-form");
 const invoiceForm = document.querySelector("#invoice-form");
+const productStatus = document.querySelector("#product-status");
+const inventoryStatus = document.querySelector("#inventory-status");
 const aliasStatus = document.querySelector("#alias-status");
 const invoiceStatus = document.querySelector("#invoice-status");
 const productSearch = document.querySelector("#product-search");
@@ -11,6 +16,24 @@ const productSearch = document.querySelector("#product-search");
 let products = [];
 let maxUploadBytes = 5 * 1024 * 1024;
 let apiAvailable = true;
+
+const orderTransitions = {
+  PEDIDO_REGISTRADO: ["EN_PREPARACION", "INCIDENCIA"],
+  EN_PREPARACION: ["ENVIADO", "INCIDENCIA"],
+  ENVIADO: ["EN_REPARTO", "INCIDENCIA"],
+  EN_REPARTO: ["ENTREGA_CONFIRMADA", "INCIDENCIA"],
+  ENTREGA_CONFIRMADA: [],
+  INCIDENCIA: [],
+};
+
+const orderStatusLabels = {
+  PEDIDO_REGISTRADO: "Pedido registrado por Río Claro",
+  EN_PREPARACION: "En preparación en la sucursal",
+  ENVIADO: "Salió de la sucursal",
+  EN_REPARTO: "En reparto hacia el domicilio",
+  ENTREGA_CONFIRMADA: "Entrega confirmada al cliente",
+  INCIDENCIA: "Incidencia; requiere seguimiento",
+};
 
 function createElement(tagName, text, className) {
   const element = document.createElement(tagName);
@@ -30,6 +53,66 @@ async function requestJson(url, options = {}) {
     throw new Error(result.error || "No fue posible completar la solicitud.");
   }
   return result;
+}
+
+function renderOrders(orders) {
+  orderList.replaceChildren();
+  if (orders.length === 0) {
+    orderList.append(createElement("p", "No hay pedidos ficticios."));
+    return;
+  }
+
+  for (const order of orders) {
+    const card = createElement("article", undefined, "record-card");
+    card.append(createElement("h3", order.orderId));
+    card.append(
+      createElement(
+        "p",
+        `Estado: ${orderStatusLabels[order.status] || "Estado no disponible"}`,
+      ),
+    );
+    card.append(
+      createElement(
+        "p",
+        `Actualizado: ${new Date(order.updatedAt).toLocaleString("es-MX")}`,
+      ),
+    );
+
+    const availableTransitions = orderTransitions[order.status] || [];
+    if (apiAvailable && availableTransitions.length > 0) {
+      const actions = createElement("form", undefined, "record-actions");
+      const label = createElement(
+        "label",
+        `Nuevo estado para ${order.orderId}`,
+      );
+      const select = document.createElement("select");
+      const initialOption = createElement("option", "Selecciona un estado");
+      initialOption.value = "";
+      initialOption.disabled = true;
+      initialOption.selected = true;
+      select.append(initialOption);
+      for (const status of availableTransitions) {
+        const option = createElement(
+          "option",
+          orderStatusLabels[status] || status,
+        );
+        option.value = status;
+        select.append(option);
+      }
+      label.htmlFor = `order-status-${order.orderId}`;
+      select.id = label.htmlFor;
+      select.required = true;
+      const button = createElement("button", "Actualizar estado");
+      button.type = "submit";
+      actions.append(label, select, button);
+      actions.addEventListener("submit", (event) => {
+        event.preventDefault();
+        updateOrderStatus(order.orderId, select.value);
+      });
+      card.append(actions);
+    }
+    orderList.append(card);
+  }
 }
 
 function renderProducts() {
@@ -56,6 +139,14 @@ function renderProducts() {
     const card = createElement("article", undefined, "record-card");
     card.append(createElement("h3", product.name));
     card.append(createElement("p", `Categoría: ${product.category || "Sin categoría"}`));
+    const priceText =
+      typeof product.price === "number"
+        ? new Intl.NumberFormat("es-MX", {
+            style: "currency",
+            currency: "MXN",
+          }).format(product.price)
+        : "Sin precio base";
+    card.append(createElement("p", `Precio base: ${priceText}`));
     card.append(
       createElement(
         "p",
@@ -71,12 +162,14 @@ function renderProducts() {
 }
 
 function populateProductSelect() {
-  const select = document.querySelector("#alias-product");
-  select.replaceChildren();
-  for (const product of products) {
-    const option = createElement("option", product.name);
-    option.value = String(product.id);
-    select.append(option);
+  for (const selectId of ["#alias-product", "#inventory-product"]) {
+    const select = document.querySelector(selectId);
+    select.replaceChildren();
+    for (const product of products) {
+      const option = createElement("option", product.name);
+      option.value = String(product.id);
+      select.append(option);
+    }
   }
 }
 
@@ -181,6 +274,23 @@ async function updateInvoice(id, status) {
   }
 }
 
+async function updateOrderStatus(orderId, status) {
+  try {
+    await requestJson(`/api/employee/orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    warning.textContent = `Estado de ${orderId} actualizado.`;
+    await refreshData();
+  } catch (error) {
+    warning.textContent =
+      error instanceof Error
+        ? error.message
+        : "No fue posible actualizar el pedido ficticio.";
+  }
+}
+
 async function simulatePayment(id, reference) {
   try {
     const result = await requestJson(`/api/employee/invoices/${id}/payments`, {
@@ -197,10 +307,18 @@ async function simulatePayment(id, reference) {
 }
 
 async function refreshData() {
-  const [config, dashboard, loadedProducts, claims, invoices] = await Promise.all([
+  const [
+    config,
+    dashboard,
+    loadedProducts,
+    orders,
+    claims,
+    invoices,
+  ] = await Promise.all([
     requestJson("/api/employee/config"),
     requestJson("/api/employee/dashboard"),
     requestJson("/api/employee/products"),
+    requestJson("/api/employee/orders"),
     requestJson("/api/employee/claims"),
     requestJson("/api/employee/invoices"),
   ]);
@@ -215,6 +333,7 @@ async function refreshData() {
   document.querySelector("#metric-payments").textContent = dashboard.simulatedPayments;
   populateProductSelect();
   renderProducts();
+  renderOrders(orders);
   renderClaims(claims);
   renderInvoices(invoices);
 }
@@ -222,7 +341,7 @@ async function refreshData() {
 function showStaticPreview() {
   apiAvailable = false;
   for (const control of document.querySelectorAll(
-    "#alias-form input, #alias-form select, #alias-form button, #invoice-form input, #invoice-form button",
+    "#product-form input, #product-form button, #inventory-form input, #inventory-form select, #inventory-form button, #alias-form input, #alias-form select, #alias-form button, #invoice-form input, #invoice-form button",
   )) {
     control.disabled = true;
   }
@@ -235,6 +354,7 @@ function showStaticPreview() {
       id: 1,
       name: "Cloro 1 Litro",
       category: "Limpieza e Higiene",
+      price: 18.5,
       aliases: ["CLORO LITRO", "Cloro 1L", "Blanqueador 1000ml"],
       stock: { Guadalajara: 12, León: 45 },
     },
@@ -242,12 +362,45 @@ function showStaticPreview() {
       id: 2,
       name: "Pinol Limpiador 800ml",
       category: "Limpieza e Higiene",
+      price: 25,
       aliases: ["PINOL 800", "Limpiador Pino 800ml"],
       stock: { León: 30, Querétaro: 8 },
     },
   ];
   populateProductSelect();
   renderProducts();
+  renderOrders([
+    {
+      orderId: "PED-DEMO-001",
+      status: "PEDIDO_REGISTRADO",
+      updatedAt: "2026-10-25T18:00:00.000Z",
+    },
+    {
+      orderId: "PED-DEMO-002",
+      status: "EN_PREPARACION",
+      updatedAt: "2026-10-25T18:00:00.000Z",
+    },
+    {
+      orderId: "PED-DEMO-003",
+      status: "ENVIADO",
+      updatedAt: "2026-10-25T18:00:00.000Z",
+    },
+    {
+      orderId: "PED-DEMO-004",
+      status: "EN_REPARTO",
+      updatedAt: "2026-10-25T18:00:00.000Z",
+    },
+    {
+      orderId: "PED-DEMO-005",
+      status: "ENTREGA_CONFIRMADA",
+      updatedAt: "2026-10-25T18:00:00.000Z",
+    },
+    {
+      orderId: "PED-DEMO-006",
+      status: "INCIDENCIA",
+      updatedAt: "2026-10-25T18:00:00.000Z",
+    },
+  ]);
   renderClaims([
     {
       folio: "RC-DEMO-001",
@@ -273,6 +426,66 @@ function showStaticPreview() {
 }
 
 productSearch.addEventListener("input", renderProducts);
+
+productForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submitButton = productForm.querySelector("button");
+  submitButton.disabled = true;
+  productStatus.textContent = "Creando producto…";
+  const formData = new FormData(productForm);
+  const priceValue = formData.get("price");
+
+  try {
+    await requestJson("/api/employee/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: formData.get("name"),
+        category: formData.get("category") || null,
+        price: priceValue === "" ? null : Number(priceValue),
+      }),
+    });
+    productForm.reset();
+    productStatus.textContent = "Producto creado.";
+    await refreshData();
+  } catch (error) {
+    productStatus.textContent =
+      error instanceof Error ? error.message : "No fue posible crear el producto.";
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+
+inventoryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submitButton = inventoryForm.querySelector("button");
+  submitButton.disabled = true;
+  inventoryStatus.textContent = "Guardando existencias…";
+  const formData = new FormData(inventoryForm);
+
+  try {
+    await requestJson(
+      `/api/employee/products/${formData.get("productId")}/inventory`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          branch: formData.get("branch"),
+          stock: Number(formData.get("stock")),
+        }),
+      },
+    );
+    inventoryStatus.textContent = "Existencias guardadas.";
+    await refreshData();
+  } catch (error) {
+    inventoryStatus.textContent =
+      error instanceof Error
+        ? error.message
+        : "No fue posible actualizar las existencias.";
+  } finally {
+    submitButton.disabled = false;
+  }
+});
 
 aliasForm.addEventListener("submit", async (event) => {
   event.preventDefault();

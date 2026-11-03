@@ -8,6 +8,84 @@ export const branches = [
   "Aguascalientes",
 ];
 
+export const demoOrderStatuses = [
+  "PEDIDO_REGISTRADO",
+  "EN_PREPARACION",
+  "ENVIADO",
+  "EN_REPARTO",
+  "ENTREGA_CONFIRMADA",
+  "INCIDENCIA",
+];
+
+export const demoOrderStatusLabels = {
+  PEDIDO_REGISTRADO: "Pedido registrado por Río Claro",
+  EN_PREPARACION: "En preparación en la sucursal",
+  ENVIADO: "Salió de la sucursal",
+  EN_REPARTO: "En reparto hacia el domicilio",
+  ENTREGA_CONFIRMADA: "Entrega confirmada al cliente",
+  INCIDENCIA: "Incidencia; requiere seguimiento",
+};
+
+const allowedOrderTransitions = {
+  PEDIDO_REGISTRADO: ["EN_PREPARACION", "INCIDENCIA"],
+  EN_PREPARACION: ["ENVIADO", "INCIDENCIA"],
+  ENVIADO: ["EN_REPARTO", "INCIDENCIA"],
+  EN_REPARTO: ["ENTREGA_CONFIRMADA", "INCIDENCIA"],
+  ENTREGA_CONFIRMADA: [],
+  INCIDENCIA: [],
+};
+
+function isDemoOrderId(orderId) {
+  return typeof orderId === "string" && /^PED-DEMO-\d{3}$/.test(orderId);
+}
+
+export async function getDemoOrders() {
+  return all(
+    `SELECT id_pedido AS orderId, estado AS status, actualizado_en AS updatedAt
+     FROM pedidos_demo ORDER BY id_pedido`,
+  );
+}
+
+export async function getDemoOrderStatus(orderId) {
+  if (!isDemoOrderId(orderId)) {
+    return null;
+  }
+  const order = await get(
+    `SELECT id_pedido AS orderId, estado AS status,
+            actualizado_en AS updatedAt
+     FROM pedidos_demo WHERE id_pedido = ?`,
+    [orderId],
+  );
+  return order ?? null;
+}
+
+export async function setDemoOrderStatus(orderId, status) {
+  if (!isDemoOrderId(orderId) || !demoOrderStatuses.includes(status)) {
+    return { result: "invalid" };
+  }
+  const current = await get(
+    "SELECT estado FROM pedidos_demo WHERE id_pedido = ?",
+    [orderId],
+  );
+  if (!current) {
+    return { result: "not_found" };
+  }
+  if (!allowedOrderTransitions[current.estado]?.includes(status)) {
+    return { result: "invalid_transition", status: current.estado };
+  }
+
+  const updatedAt = new Date().toISOString();
+  const update = await run(
+    `UPDATE pedidos_demo SET estado = ?, actualizado_en = ?
+     WHERE id_pedido = ? AND estado = ?`,
+    [status, updatedAt, orderId, current.estado],
+  );
+  if (!update.changes) {
+    return { result: "invalid_transition", status: current.estado };
+  }
+  return { result: "updated", orderId, status, updatedAt };
+}
+
 export async function getDashboard() {
   const [products, claims, invoices, payments] = await Promise.all([
     get("SELECT COUNT(*) AS count FROM productos_maestros"),
@@ -33,6 +111,7 @@ export async function getProductCatalog() {
       product.id_producto,
       product.nombre_estandar,
       product.categoria,
+      product.precio_base,
       alias.alias,
       inventory.sucursal,
       inventory.stock_actual
@@ -51,6 +130,7 @@ export async function getProductCatalog() {
         id: row.id_producto,
         name: row.nombre_estandar,
         category: row.categoria,
+        price: row.precio_base,
         aliases: [],
         stock: {},
       });
@@ -66,6 +146,57 @@ export async function getProductCatalog() {
   }
 
   return [...products.values()];
+}
+
+export async function createProduct({ name, category = null, price = null }) {
+  const normalizedName = normalizeText(name);
+  if (!normalizedName) {
+    const error = new Error("El nombre del producto no es válido.");
+    error.code = "INVALID_PRODUCT";
+    throw error;
+  }
+
+  try {
+    const inserted = await run(
+      `INSERT INTO productos_maestros
+        (nombre_estandar, nombre_normalizado, categoria, precio_base)
+       VALUES (?, ?, ?, ?)`,
+      [name.trim(), normalizedName, category?.trim() || null, price],
+    );
+    return {
+      id: inserted.lastID,
+      name: name.trim(),
+      category: category?.trim() || null,
+      price,
+    };
+  } catch (error) {
+    if (error.code === "SQLITE_CONSTRAINT") {
+      const conflict = new Error("Ya existe un producto con ese nombre normalizado.");
+      conflict.code = "PRODUCT_CONFLICT";
+      throw conflict;
+    }
+    throw error;
+  }
+}
+
+export async function setProductInventory(productId, branch, stock) {
+  const product = await get(
+    "SELECT id_producto FROM productos_maestros WHERE id_producto = ?",
+    [productId],
+  );
+  if (!product) {
+    return { result: "not_found" };
+  }
+
+  await run(
+    `INSERT INTO inventario_sucursales
+      (id_producto, sucursal, stock_actual)
+     VALUES (?, ?, ?)
+     ON CONFLICT(id_producto, sucursal)
+     DO UPDATE SET stock_actual = excluded.stock_actual`,
+    [productId, branch, stock],
+  );
+  return { result: "updated" };
 }
 
 export async function addProductAlias(productId, alias, branch = null) {

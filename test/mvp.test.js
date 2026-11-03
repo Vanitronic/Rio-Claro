@@ -10,13 +10,18 @@ process.env.SQLITE_DB_PATH = databasePath;
 process.env.FOUNDRY_PROJECT_ENDPOINT = "https://example.test";
 process.env.FOUNDRY_AGENT_NAME = "test-agent";
 process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT = "";
+process.env.AZURE_SPEECH_ENABLED = "true";
+process.env.AZURE_SPEECH_ENDPOINT =
+  "https://speech-test.cognitiveservices.azure.com/";
 process.env.ENABLE_EMPLOYEE_DEMO = "true";
 process.env.NODE_ENV = "test";
 process.env.MAX_UPLOAD_BYTES = "1024";
 
 const database = await import("../scripts/database.js");
 const demoService = await import("../scripts/demoService.js");
+const { createAssistantResponse } = await import("../scripts/functionCalling.js");
 const inventoryTool = await import("../scripts/inventarioTool.js");
+const { assistantTools } = await import("../scripts/toolsDefinitions.js");
 const { app } = await import("../server.js");
 
 let server;
@@ -53,6 +58,279 @@ test("inicializa el esquema, usa alias y no duplica semillas", async () => {
   assert.equal(products[0].producto, "Cloro 1 Litro");
   assert.equal(products[0].existencias, 45);
   assert.equal((await demoService.getDashboard()).products, 2);
+});
+
+test("crea productos con nombre único normalizado y actualiza inventario por sucursal", async () => {
+  const created = await fetch(`${baseUrl}/api/employee/products`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Jabón Líquido 2L",
+      category: "Limpieza",
+      price: 42.5,
+    }),
+  });
+  assert.equal(created.status, 201);
+  const product = await created.json();
+
+  const duplicate = await fetch(`${baseUrl}/api/employee/products`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "  JABON   LIQUIDO 2L " }),
+  });
+  assert.equal(duplicate.status, 409);
+
+  const inventory = await fetch(
+    `${baseUrl}/api/employee/products/${product.id}/inventory`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch: "León", stock: 5 }),
+    },
+  );
+  assert.equal(inventory.status, 200);
+
+  const update = await fetch(
+    `${baseUrl}/api/employee/products/${product.id}/inventory`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch: "León", stock: 9 }),
+    },
+  );
+  assert.equal(update.status, 200);
+  const catalog = await demoService.getProductCatalog();
+  assert.equal(
+    catalog.find((entry) => entry.id === product.id).stock["León"],
+    9,
+  );
+});
+
+test("los pedidos ficticios solo aceptan transiciones permitidas", async () => {
+  const ordersResponse = await fetch(`${baseUrl}/api/employee/orders`);
+  assert.equal(ordersResponse.status, 200);
+  const orders = await ordersResponse.json();
+  assert.equal(orders.length, 6);
+  assert.deepEqual(Object.keys(orders[0]).sort(), [
+    "orderId",
+    "status",
+    "updatedAt",
+  ]);
+  assert.equal(orders[0].orderId, "PED-DEMO-001");
+  assert.equal(
+    demoService.demoOrderStatusLabels[orders[0].status],
+    "Pedido registrado por Río Claro",
+  );
+  assert.equal(
+    typeof (await demoService.getDemoOrderStatus(orders[0].orderId)).updatedAt,
+    "string",
+  );
+
+  const invalidTransition = await fetch(
+    `${baseUrl}/api/employee/orders/PED-DEMO-001/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "ENVIADO" }),
+    },
+  );
+  assert.equal(invalidTransition.status, 409);
+
+  const validTransition = await fetch(
+    `${baseUrl}/api/employee/orders/PED-DEMO-001/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "EN_PREPARACION" }),
+    },
+  );
+  assert.equal(validTransition.status, 200);
+  assert.equal(
+    (await demoService.getDemoOrderStatus("PED-DEMO-001")).status,
+    "EN_PREPARACION",
+  );
+
+  for (const status of ["ENVIADO", "EN_REPARTO", "ENTREGA_CONFIRMADA"]) {
+    const transition = await fetch(
+      `${baseUrl}/api/employee/orders/PED-DEMO-001/status`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      },
+    );
+    assert.equal(transition.status, 200);
+  }
+  const completedOrderChange = await fetch(
+    `${baseUrl}/api/employee/orders/PED-DEMO-001/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "INCIDENCIA" }),
+    },
+  );
+  assert.equal(completedOrderChange.status, 409);
+
+  const incidentTransition = await fetch(
+    `${baseUrl}/api/employee/orders/PED-DEMO-002/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "INCIDENCIA" }),
+    },
+  );
+  assert.equal(incidentTransition.status, 200);
+  const incidentRecovery = await fetch(
+    `${baseUrl}/api/employee/orders/PED-DEMO-002/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "ENVIADO" }),
+    },
+  );
+  assert.equal(incidentRecovery.status, 409);
+
+  const personalIdentifier = await demoService.getDemoOrderStatus("PED-REAL-001");
+  assert.equal(personalIdentifier, null);
+});
+
+test("Function Calling usa function_call_output con call_id y limita rondas", async () => {
+  assert.equal(assistantTools.length, 1);
+  assert.deepEqual(
+    {
+      type: assistantTools[0].type,
+      name: assistantTools[0].name,
+      required: assistantTools[0].parameters.required,
+      additionalProperties: assistantTools[0].parameters.additionalProperties,
+    },
+    {
+      type: "function",
+      name: "consultarEstadoPedido",
+      required: ["orderId"],
+      additionalProperties: false,
+    },
+  );
+
+  const requests = [];
+  const mockResponses = [
+    {
+      output: [
+        {
+          type: "function_call",
+          name: "consultarEstadoPedido",
+          arguments: '{"orderId":"PED-DEMO-002"}',
+          call_id: "call-demo-1",
+        },
+      ],
+    },
+    { output: [{ type: "message" }], output_text: "Está en preparación." },
+  ];
+  const openai = {
+    responses: {
+      create: async (...args) => {
+        requests.push(args);
+        return mockResponses.shift();
+      },
+    },
+  };
+  const agentRef = { body: { agent_reference: { name: "test-agent" } } };
+  const result = await createAssistantResponse({
+    openai,
+    conversationId: "conversation-demo",
+    message: "¿Dónde está PED-DEMO-002?",
+    agentRef,
+    executeTool: async (name, args) => ({
+      tool: name,
+      orderId: args.orderId,
+      status: "EN_PREPARACION",
+    }),
+  });
+
+  assert.equal(result.output_text, "Está en preparación.");
+  assert.deepEqual(requests[1][0], {
+    conversation: "conversation-demo",
+    input: [
+      {
+        type: "function_call_output",
+        call_id: "call-demo-1",
+        output: JSON.stringify({
+          tool: "consultarEstadoPedido",
+          orderId: "PED-DEMO-002",
+          status: "EN_PREPARACION",
+        }),
+      },
+    ],
+  });
+  assert.equal(requests[1][1], agentRef);
+
+  const cappedRequests = [];
+  const repeatedCall = {
+    output: [
+      {
+        type: "function_call",
+        name: "consultarEstadoPedido",
+        arguments: '{"orderId":"PED-DEMO-001"}',
+        call_id: "call-repeat",
+      },
+    ],
+  };
+  await assert.rejects(
+    createAssistantResponse({
+      openai: {
+        responses: {
+          create: async (...args) => {
+            cappedRequests.push(args);
+            return repeatedCall;
+          },
+        },
+      },
+      conversationId: "conversation-demo",
+      message: "consulta",
+      agentRef,
+      executeTool: async () => ({ status: "PEDIDO_REGISTRADO" }),
+    }),
+    /límite de llamadas/,
+  );
+  assert.equal(cappedRequests.length, 4);
+});
+
+test("argumentos mal formados no se ejecutan y producen salida segura de herramienta", async () => {
+  const requests = [];
+  const outputs = [
+    {
+      output: [
+        {
+          type: "function_call",
+          name: "consultarEstadoPedido",
+          arguments: "{mal formado",
+          call_id: "call-invalid",
+        },
+      ],
+    },
+    { output: [{ type: "message" }], output_text: "No se pudo consultar." },
+  ];
+  const result = await createAssistantResponse({
+    openai: {
+      responses: {
+        create: async (...args) => {
+          requests.push(args);
+          return outputs.shift();
+        },
+      },
+    },
+    conversationId: "conversation-demo",
+    message: "consulta",
+    agentRef: {},
+    executeTool: async () => {
+      assert.fail("Una llamada con argumentos inválidos no debe ejecutarse.");
+    },
+  });
+
+  assert.equal(result.output_text, "No se pudo consultar.");
+  assert.deepEqual(
+    JSON.parse(requests[1][0].input[0].output),
+    { error: "No fue posible procesar la consulta ficticia." },
+  );
 });
 
 test("una factura normalizada no se inserta dos veces", async () => {
@@ -132,6 +410,29 @@ test("health, validación de mensaje y reclamos de demostración", async () => {
   });
   assert.equal(claimResponse.status, 201);
   assert.match((await claimResponse.json()).folio, /^RC-\d{6}$/);
+});
+
+test("Azure Speech solo publica su configuración local y bloquea otros orígenes", async () => {
+  const config = await fetch(`${baseUrl}/api/speech/config`);
+  const sdkBundle = await fetch(`${baseUrl}/vendor/speech-sdk.js`, {
+    method: "HEAD",
+  });
+  const foreignOriginToken = await fetch(`${baseUrl}/api/speech/token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "https://attacker.example",
+    },
+    body: "{}",
+  });
+  assert.deepEqual(await config.json(), {
+    enabled: true,
+    endpoint: "https://speech-test.cognitiveservices.azure.com/",
+  });
+  assert.equal(config.headers.get("cache-control"), "no-store");
+  assert.equal(sdkBundle.status, 200);
+  assert.match(sdkBundle.headers.get("content-type"), /javascript/);
+  assert.equal(foreignOriginToken.status, 403);
 });
 
 test("la carga valida MIME y firma y no envía datos a DI si falta configuración", async () => {

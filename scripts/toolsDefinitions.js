@@ -1,52 +1,20 @@
 export const assistantTools = [
   {
     type: "function",
-    function: {
-      name: "consultarInventarioDB",
-      description: "Consulta el inventario y existencias de productos en la base de datos de Río Claro.",
-      parameters: {
-        type: "object",
-        properties: {
-          nombreProducto: {
-            type: "string",
-            description: "Nombre o palabra clave del producto a buscar (ej. cloro, desinfectante)."
-          },
-          sucursal: {
-            type: "string",
-            description: "Nombre de la sucursal opcional (ej. León, GDL)."
-          }
+    name: "consultarEstadoPedido",
+    description:
+      "Consulta únicamente un pedido ficticio de demostración por su identificador PED-DEMO-NNN. Devuelve una descripción clara del estado y la hora de actualización; no devuelve datos personales ni cambia el pedido.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        orderId: {
+          type: "string",
+          description: "Identificador ficticio, por ejemplo PED-DEMO-001.",
         },
-        required: ["nombreProducto"]
-      }
-    }
+      },
+      required: ["orderId"],
+      additionalProperties: false,
+    },
   },
-  {
-    type: "function",
-    function: {
-      name: "registrarReporteDevolucion",
-      description: "Registra formalmente una solicitud de devolución de un cliente en el sistema.",
-      parameters: {
-        type: "object",
-        properties: {
-          clienteId: {
-            type: "integer",
-            description: "ID numérico del cliente si se conoce."
-          },
-          sucursal: {
-            type: "string",
-            description: "Sucursal donde se adquirió el producto."
-          },
-          productoInvolucrado: {
-            type: "string",
-            description: "Nombre del producto que se desea devolver."
-          },
-          motivo: {
-            type: "string",
-            description: "Motivo detallado de la devolución."
-          }
-        },
-        required: ["productoInvolucrado", "motivo"]
-      }
-    }
-  }
 ];
