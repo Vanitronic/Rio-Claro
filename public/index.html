@@ -19,6 +19,7 @@
           <p class="eyebrow">Distribuidora Río Claro</p>
           <h1>Asistente de atención</h1>
         </div>
+        <a class="header-link" href="/empleado.html">Vista de empleados (demo)</a>
         <span class="status-indicator" aria-label="Asistente disponible"></span>
       </header>
 
@@ -36,6 +37,33 @@
 
       <p id="typing-status" class="typing-status" role="status" aria-live="polite"></p>
 
+      <details class="claim-panel">
+        <summary>Registrar un reclamo de demostración</summary>
+        <form id="claim-form" class="claim-form">
+          <label for="claim-branch">Sucursal</label>
+          <select id="claim-branch" name="branch" required>
+            <option value="">Selecciona una sucursal</option>
+            <option>Guadalajara</option>
+            <option>Zapopan</option>
+            <option>León</option>
+            <option>Querétaro</option>
+            <option>Aguascalientes</option>
+          </select>
+          <label for="claim-product">Producto</label>
+          <input id="claim-product" name="product" maxlength="160" required />
+          <label for="claim-reason">Motivo</label>
+          <textarea
+            id="claim-reason"
+            name="reason"
+            minlength="5"
+            maxlength="1000"
+            required
+          ></textarea>
+          <button id="claim-submit" type="submit">Enviar reclamo</button>
+          <p id="claim-status" class="form-status" role="status" aria-live="polite"></p>
+        </form>
+      </details>
+
       <form id="chat-form" class="chat-form">
         <label class="sr-only" for="message-input">Escribe tu mensaje</label>
         <textarea
@@ -51,7 +79,7 @@
         </button>
       </form>
       <p class="disclaimer">
-        Asistente virtual con IA. No consulta pedidos ni existencias en tiempo real, no compartas información personal ni sensible en este chat.
+        Asistente virtual con IA para información general. No comparte información personal ni procesa pagos. El registro de reclamos es una demostración local.
       </p>
     </main>
   </body>

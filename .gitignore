@@ -2,3 +2,5 @@
 node_modules/
 .azure/
 *.log
+data/
+*.sqlite

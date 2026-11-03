@@ -3,6 +3,9 @@ const messageInput = document.querySelector("#message-input");
 const sendButton = document.querySelector("#send-button");
 const messages = document.querySelector("#messages");
 const typingStatus = document.querySelector("#typing-status");
+const claimForm = document.querySelector("#claim-form");
+const claimSubmit = document.querySelector("#claim-submit");
+const claimStatus = document.querySelector("#claim-status");
 
 let conversationId = null;
 
@@ -58,5 +61,33 @@ chatForm.addEventListener("submit", async (event) => {
     sendButton.disabled = false;
     typingStatus.textContent = "";
     messageInput.focus();
+  }
+});
+
+claimForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  claimSubmit.disabled = true;
+  claimStatus.textContent = "Enviando…";
+  const formData = new FormData(claimForm);
+
+  try {
+    const response = await fetch("/api/claims", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.fromEntries(formData)),
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "No fue posible registrar el reclamo.");
+    }
+
+    claimStatus.textContent = `Reclamo ${result.folio} registrado como ${result.estado}.`;
+    claimForm.reset();
+  } catch (error) {
+    claimStatus.textContent =
+      error instanceof Error ? error.message : "Ocurrió un error.";
+  } finally {
+    claimSubmit.disabled = false;
   }
 });

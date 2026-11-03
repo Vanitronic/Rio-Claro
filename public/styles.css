@@ -75,6 +75,18 @@ h1 {
   font-size: 1.15rem;
 }
 
+.header-link {
+  margin-left: auto;
+  color: var(--color-primary);
+  font-size: 0.85rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.header-link:hover {
+  text-decoration: underline;
+}
+
 .status-indicator {
   width: 10px;
   height: 10px;
@@ -182,12 +194,189 @@ h1 {
   opacity: 0.65;
 }
 
+.claim-panel {
+  margin: 0 24px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text);
+}
+
+.claim-panel summary {
+  color: var(--color-primary);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.claim-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.claim-form label,
+.employee-section label {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.claim-form input,
+.claim-form select,
+.claim-form textarea,
+.employee-section input,
+.employee-section select {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.claim-form textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.claim-form button,
+.employee-section button {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+.claim-form button:disabled,
+.employee-section button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.form-status {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
 .disclaimer {
   margin: 10px 24px 20px;
   color: var(--color-muted);
   font-size: 0.76rem;
   line-height: 1.5;
   text-align: center;
+}
+
+.employee-shell {
+  width: min(1120px, 100%);
+  min-height: calc(100vh - 48px);
+  padding-bottom: 24px;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.employee-content {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+}
+
+.demo-warning {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #d5a12b;
+  border-radius: 10px;
+  background: #fff8df;
+  color: #614700;
+  line-height: 1.45;
+}
+
+.dashboard-grid,
+.employee-grid,
+.record-list {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metric-card,
+.employee-section,
+.record-card {
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.metric-card span {
+  display: block;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.5rem;
+}
+
+.employee-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.employee-section h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+.employee-section form {
+  display: grid;
+  gap: 8px;
+}
+
+.record-list {
+  margin-top: 14px;
+}
+
+.record-card h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.record-card p {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.record-actions input {
+  flex: 1 1 150px;
+}
+
+.record-actions button.secondary {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
 }
 
 .sr-only {
@@ -229,6 +418,11 @@ h1 {
     margin-left: 16px;
   }
 
+  .claim-panel {
+    margin-right: 16px;
+    margin-left: 16px;
+  }
+
   .chat-form button {
     padding: 0 14px;
   }
@@ -236,6 +430,34 @@ h1 {
   .disclaimer {
     margin-right: 16px;
     margin-left: 16px;
+  }
+
+  .header-link {
+    max-width: 90px;
+    font-size: 0.74rem;
+    text-align: right;
+  }
+
+  .status-indicator {
+    display: none;
+  }
+
+  .employee-shell {
+    min-height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .employee-content {
+    padding: 16px;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .employee-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -260,5 +482,15 @@ h1 {
   .message-error {
     color: #ffd1ce;
     background: #512e2c;
+  }
+
+  .demo-warning {
+    border-color: #826a2d;
+    background: #3b321d;
+    color: #ffe8a3;
+  }
+
+  .record-actions button.secondary {
+    color: var(--color-text);
   }
 }
