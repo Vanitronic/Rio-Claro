@@ -17,13 +17,13 @@ A pesar de contar con más de dos décadas de información operativa, la falta d
 3. **Discrepancia de datos:** Reportes de ventas incoherentes entre sucursales por la falta de un catálogo unificado de productos.
 
 ### 1.2 "Inventario del Desorden" y Plan de Saneamiento previo a la IA
-Para evitar alucinaciones, respuestas contradictorias y riesgos de seguridad, la IA no se conectará directamente a los datos en su estado actual. Se aplicó una estrategia de saneamiento basada en **archivos estructurados (JSON/CSV) y repositorios documentales limpios**:
+Para evitar respuestas contradictorias y riesgos de seguridad, la IA no se conectará directamente a los datos en su estado actual. Se aplicó una estrategia de saneamiento:
 
 | Fuente de Datos | Estado Actual | Por qué frena a la IA | Plan de Saneamiento y Estandarización |
 | :--- | :--- | :--- | :--- |
-| **Facturas de proveedores** | PDFs y fotos en correos personales y WhatsApp. | Datos no estructurados; la misma factura aparece como foto y PDF, causando pagos duplicados. | Ingesta centralizada en carpetas simulación de almacenamiento Blob Storage. Procesamiento previo mediante extractor con regla de unicidad por número de folio/proveedor. |
-| **Catálogo de productos** | Un archivo Excel por sucursal con distintas columnas y nombres. | "Cloro 1L", "CLORO LITRO" y "Blanqueador 1000ml" tienen 3 claves distintas, ofreciendo precios y existencias contradictorios. | Unificación en un archivo `catalogo_maestro.json` que mapea sinónimos e identificadores únicos para todas las sucursales. |
-| **Quejas y dudas de clientes** | Dispersas en WhatsApp, llamadas y correos sin registro central. | No hay historial para medir sentimiento, detectar fallas repetidas ni alimentar a los agentes. | Creación de un registro histórico unificado en `historial_quejas.json` indexado para consulta contextual del agente. |
+| **Facturas de proveedores** | PDFs y fotos en correos personales y WhatsApp. | Datos no estructurados; la misma factura aparece como foto y PDF, causando pagos duplicados. | Ingesta centralizada en base de datos SQLite. Procesamiento previo mediante Azure Document Intelligence, aun require supervision humana. |
+| **Catálogo de productos** | Un archivo Excel por sucursal con distintas columnas y nombres. | "Cloro 1L", "CLORO LITRO" y "Blanqueador 1000ml" tienen 3 claves distintas, ofreciendo precios y existencias contradictorios. | Unificación en un base de datos SQLite que mapea sinónimos e identificadores únicos para todas las sucursales. |
+| **Quejas y dudas de clientes** | Dispersas en WhatsApp, llamadas y correos sin registro central. | No hay historial para medir sentimiento, detectar fallas repetidas ni alimentar a los agentes. | Creación de un registro histórico unificado  para consulta contextual del agente. |
 | **Políticas internas** | Documentos Word desactualizados en memorias USB. | Existen versiones contradictorias de políticas (ej. devoluciones), haciendo que la IA responda con seguridad datos falsos. | Consolidación y redacción de una **fuente única de verdad** en formato `.md` / `.pdf` limpio para la base de conocimiento (RAG). |
 | **Permisos y datos sensibles** | Carpetas compartidas con contraseña única; acceso a nóminas y precios. | Riesgo alto de exposición de datos privados y sueldos a personal no autorizado. | Implementación conceptual de Control de Acceso Basado en Roles (RBAC) con **Microsoft Entra ID** e ignorado de campos sensibles en el dataset de IA. |
 
@@ -70,7 +70,7 @@ graph TD
 ```
 ### 2.1 Cargas de Trabajo de Azure Implementadas
 1. **Azure AI Document Intelligence (Form Recognizer):** Analiza y extrae campos clave (Proveedor, Fecha, Folio, Subtotal, IVA, Total) de las facturas en PDF o imagen.
-2. **Azure OpenAI Service & Azure AI Search (RAG):** El asistente consulta exclusivamente los documentos de políticas limpias (`politica_devoluciones_vFINAL.pdf`) e historial estandarizado, evitando alucinaciones.
+2. **Azure OpenAI Service & Azure AI Search (RAG):** El asistente consulta exclusivamente los documentos de políticas limpias (`Politicas_Rio_Claro.md`) e historial estandarizado, evitando alucinaciones.
 3. **Azure Speech Services (STT / TTS):** Transforma voz a texto para la consulta móvil en bodega y sintetiza la respuesta a audio para el usuario.
 4. **Microsoft Entra ID & Azure Key Vault:** Simulación de identidades individuales y resguardo seguro de llaves de API.
 
@@ -82,8 +82,7 @@ graph TD
 | :--- | :--- | :--- | :--- |
 | **Don Ernesto** *(Director General)* | Pérdida de clientes grandes y discrepancia en cifras de ventas. | Consolidación de datos de las 5 sucursales mediante el archivo maestro; panel web con visión global de ventas y presupuesto controlado. | Reporte unificado de ventas donde las 5 sucursales coinciden y piloto estático de bajo costo. |
 | **Laura** *(Cuentas por Pagar)* | Errores con dinero o ser reemplazada por la IA. | Procesamiento automático de facturas con detector de duplicados por folio y alerta de revisión humana para casos borrosos (*Human-in-the-Loop*). | Reducción del tiempo de captura de 12 horas a menos de 2 horas semanales, manteniendo la decisión final en sus manos. |
-| **Mariana** *(Gerente León)* | Clientes molestos por falta de seguimiento a pedidos. | Asistente inteligente RAG que busca el estado de los pedidos e inventarios en todas las sucursales desde una sola interfaz. | Respuestas inmediatas (<15 minutos) a clientes sin importar de qué sucursal salió el pedido. |
-| **Toño** *(Jefe de Bodega)* | No usa computadora; opera 100% por teléfono celular. | Interfaz adaptada para dispositivos móviles con módulo de entrada y salida por voz mediante Azure Speech. | Consulta hablada directa ("¿Cuánto cloro de litro nos queda?") recibiendo respuesta auditiva precisa. |
+| **Mariana** *(Gerente León)* | Clientes molestos por falta de seguimiento a pedidos. | Asistente inteligente RAG que busca el estado de los pedidos e inventarios en todas las sucursales desde una sola interfaz. | Respuestas inmediatas (<15 minutos) a clientes sin importar de qué sucursal salió el pedido. | |
 | **Carlos** *(Soporte y Sistemas)* | Ser el único responsable de una herramienta compleja e insegura. | Asignación de roles mediante Entra ID, almacenamiento de llaves en Azure Key Vault y un interruptor principal de apague del sistema (*Kill Switch*). | Eliminación de contraseñas compartidas, protección de datos de nómina y control total de la aplicación. |
 
 ---
@@ -102,7 +101,7 @@ graph TD
     B --> B1[Estandarización del catálogo <br/> para las 5 sucursales]
     C --> C1[Umbral de confianza <br/> y Human-in-the-Loop]
     D --> D1[Azure Key Vault y <br/> RBAC vía Entra ID]
-    E --> E1[Uso por voz y móvil <br/> para personal de bodega]
+    E --> E1[Uso por voz y móvil <br/> para clientes]
     F --> F1[Aviso de IA y citas <br/> de documentos fuente]
     G --> G1[Aprobación final <br/> humana en pagos]
 
@@ -111,7 +110,7 @@ graph TD
 
 1. **Equidad (*Fairness*):**  
    * *Pregunta:* ¿El agente trata igual a clientes de todas las sucursales?  
-   * *Evidencia:* Al estandarizar el catálogo en `catalogo_maestro.json`, el agente ofrece exactamente los mismos precios y tiempos de respuesta para León, Querétaro, Aguascalientes, Guadalajara y Zapopan.
+   * *Evidencia:* Al estandarizar el catálogo, el agente ofrece exactamente los mismos precios y tiempos de respuesta para León, Querétaro, Aguascalientes, Guadalajara y Zapopan.
 
 2. **Confiabilidad y Seguridad (*Reliability & Safety*):**  
    * *Pregunta:* ¿Qué pasa si una factura está borrosa?  
@@ -123,11 +122,11 @@ graph TD
 
 4. **Inclusión (*Inclusiveness*):**  
    * *Pregunta:* ¿El asistente funciona por voz y desde el celular?  
-   * *Evidencia:* Integración de Azure Speech Services con maquetación web responsiva para consulta auditiva desde dispositivos móviles en la bodega.
+   * *Evidencia:* Integración de Azure Speech Services con maquetación web responsiva para consulta auditiva desde dispositivos móviles.
 
 5. **Transparencia (*Transparency*):**  
    * *Pregunta:* ¿El usuario sabe que habla con una IA y de dónde proviene la respuesta?  
-   * *Evidencia:* El chat incluye un aviso explícito (*"Hola, soy el asistente virtual de Río Claro..."*) y cada respuesta sobre políticas muestra la cita textual del documento fuente (`[Fuente: Politica_Devoluciones_vFINAL.pdf, Pág. 1]`).
+   * *Evidencia:* El chat incluye un aviso explícito (*"Hola, soy el asistente virtual de Río Claro..."*) y cada respuesta sobre políticas muestra la cita textual del documento fuente (`[Fuente: Politicas_Rio_Claro]`).
 
 6. **Rendición de Cuentas (*Accountability*):**  
    * *Pregunta:* ¿Quién en la empresa revisa y aprueba lo que sugiere la IA?  
@@ -138,20 +137,16 @@ graph TD
 ## 5. Demostración y Evidencia del Prototipo Funcional
 
 ### 5.1 Extracción de Facturas y Módulo Human-in-the-Loop (Laura)
-![Demostración de Extracción de Factura y Alerta de Confianza Baja](https://via.placeholder.com/800x400.png?text=Captura+1:+Extracción+de+Factura+con+Document+Intelligence+y+Revision+Humana)  
+![Demostración de Extracción de Factura y Alerta de Confianza Baja](img/Facturacion.png)  
 *Figura 1: Procesamiento de factura mediante Azure AI Document Intelligence. Se muestra la extracción del total y la alerta enviada a Laura por nivel de confianza bajo.*
 
 ### 5.2 Consulta del Asistente Virtual con RAG (Mariana y Clientes)
-![Demostración del Chat con citas de fuentes limpias](https://via.placeholder.com/800x400.png?text=Captura+2:+Asistente+Virtual+RAG+con+Cita+de+Politicas)  
+![Demostración del Chat con citas de fuentes limpias](img/Consulta_politicas.png)  
 *Figura 2: Interacción con el agente virtual resolviendo una duda sobre la política de devoluciones, mostrando el documento de origen.*
 
-### 5.3 Módulo de Inclusión y Consulta por Voz para Bodega (Toño)
-![Demostración de la Interfaz por Voz desde Móvil](https://via.placeholder.com/800x400.png?text=Captura+3:+Consulta+de+Inventario+por+Voz+Speech-to-Text)  
-*Figura 3: Consulta de existencias realizada por Toño mediante comando de voz en dispositivo móvil.*
-
-### 5.4 Control de Identidades y Seguridad (Carlos)
-![Panel de Roles e Identidades Microsoft Entra ID](https://via.placeholder.com/800x400.png?text=Captura+4:+Panel+de+Seguridad+Entra+ID+y+Key+Vault)  
-*Figura 4: Estructura de permisos de usuario simulando Microsoft Entra ID y resguardo de claves.*
+### 5.3 Módulo de Inclusión y Consulta por Voz (Clientes)
+![Demostración de la Interfaz por Voz desde Móvil](img/Dictado.png)  
+*Figura 3: Consulta del estado de pedidos a traves de dicatado por voz*
 
 ---
 
@@ -159,6 +154,6 @@ graph TD
 
 El prototipo funcional desplegado y listo para evaluación externa se encuentra disponible en el siguiente enlace:
 
-👉 **[Acceder al Prototipo Funcional de Distribuidora Río Claro](https://rio-claro-ai.azurewebsites.net)** *(Sustituir por tu URL real)*
+👉 **[Acceder al Prototipo Funcional de Distribuidora Río Claro](https://rio-claro-vania-6be479b4.azurewebsites.net/)**
 
 *Nota: La aplicación permite la navegación como usuario final para probar la carga de facturas, la consulta por voz e interacción con el agente.*

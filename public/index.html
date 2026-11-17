@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Asistente virtual de atención a clientes de Distribuidora Río Claro."
+    />
+    <title>Asistente Río Claro</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main class="chat-shell">
+      <header class="chat-header">
+        <div class="brand-mark" aria-hidden="true">RC</div>
+        <div>
+          <p class="eyebrow">Distribuidora Río Claro</p>
+          <h1>Asistente de atención</h1>
+        </div>
+        <a class="header-link" href="/empleado.html">Vista de empleados (demo)</a>
+        <span class="status-indicator" aria-label="Asistente disponible"></span>
+      </header>
+
+      <section
+        id="messages"
+        class="messages"
+        aria-label="Conversación"
+        aria-live="polite"
+        aria-relevant="additions text"
+      >
+        <article class="message message-assistant">
+          <p>¡Hola! Soy el asistente virtual de Río Claro. Puedo ayudarte con preguntas generales sobre devoluciones y garantías. ¿Qué necesitas saber?</p>
+        </article>
+      </section>
+
+      <p id="typing-status" class="typing-status" role="status" aria-live="polite"></p>
+
+      <section class="voice-panel" aria-label="Prueba opcional de voz">
+        <label class="voice-opt-in" for="voice-opt-in">
+          <input id="voice-opt-in" type="checkbox" disabled />
+          Habilitar funciones de voz en este dispositivo
+        </label>
+        <div class="voice-actions">
+          <button
+            id="voice-input-button"
+            type="button"
+            aria-pressed="false"
+            disabled
+          >
+            Dictar pregunta
+          </button>
+          <button id="voice-read-button" type="button" disabled>
+            Leer última respuesta
+          </button>
+          <button id="voice-cancel-button" type="button" disabled>
+            Cancelar voz
+          </button>
+        </div>
+        <p id="voice-status" class="form-status" role="status" aria-live="polite">
+          La voz es opcional; puedes usar el chat de texto en todo momento.
+        </p>
+        <p class="voice-note">
+          Al dictar con Azure Speech, el audio se envía al servicio de Azure y esta aplicación no lo almacena. Si no está habilitado, se usarán las funciones de voz del navegador. El micrófono solo se activa al dictar.
+        </p>
+      </section>
+
+      <details class="claim-panel">
+        <summary>Registrar un reclamo de demostración</summary>
+        <form id="claim-form" class="claim-form">
+          <label for="claim-branch">Sucursal</label>
+          <select id="claim-branch" name="branch" required>
+            <option value="">Selecciona una sucursal</option>
+            <option>Guadalajara</option>
+            <option>Zapopan</option>
+            <option>León</option>
+            <option>Querétaro</option>
+            <option>Aguascalientes</option>
+          </select>
+          <label for="claim-product">Producto</label>
+          <input id="claim-product" name="product" maxlength="160" required />
+          <label for="claim-reason">Motivo</label>
+          <textarea
+            id="claim-reason"
+            name="reason"
+            minlength="5"
+            maxlength="1000"
+            required
+          ></textarea>
+          <button id="claim-submit" type="submit">Enviar reclamo</button>
+          <p id="claim-status" class="form-status" role="status" aria-live="polite"></p>
+        </form>
+      </details>
+
+      <form id="chat-form" class="chat-form">
+        <label class="sr-only" for="message-input">Escribe tu mensaje</label>
+        <textarea
+          id="message-input"
+          name="message"
+          maxlength="2000"
+          placeholder="Escribe tu pregunta..."
+          rows="1"
+          required
+        ></textarea>
+        <button id="send-button" type="submit" aria-label="Enviar mensaje">
+          <span>Enviar</span>
+        </button>
+      </form>
+      <p class="disclaimer">
+        Asistente virtual con IA para información general. No comparte información personal ni procesa pagos. En App Service puedes registrar reclamos y usar el panel sin iniciar sesión; los cambios son temporales y privados de esta pestaña.
+      </p>
+    </main>
+  </body>
+</html>
